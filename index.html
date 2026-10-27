@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>world.execute(me); — 矩阵</title>
+<!--
+  world.execute(me); / the matrix
+  ============================================================
+  双击本文件即可播放。不需要服务器、不构建、不联网。
+  唯一时钟： t = audio.currentTime + syncOffset
+  每一帧都是 t 的纯函数（无帧计数、无跨帧状态、无 Math.random）。
+
+  快捷键
+   space 播放/暂停    ← → 快退/快进 5s (Shift = 1s)
+   , . 同步偏移 ±10ms (Shift = ±1ms)    / 归零
+   R 重播   F 全屏   H 隐藏界面   D 调试
+   ↑ ↓ 音量   Home / End 首尾
+
+  音频须与本文件同级。页面会尝试：
+    Mili - world.execute(me);.mp3
+    Mili - world.execute (me) ;.mp3
+    ...
+-->
+<link rel="stylesheet" href="src/style.css">
+</head>
+<body>
+<div id="shell">
+  <div id="stage">
+    <canvas id="view" width="1920" height="1080"></canvas>
+    <!-- no crossorigin attribute on purpose: under file:// an opaque origin can
+         never satisfy CORS and Chrome reports MEDIA_ERR_SRC_NOT_SUPPORTED. -->
+    <audio id="audio" preload="auto"></audio>
+    <div id="start"><b>点击开始</b><small>CLICK TO BEGIN</small></div>
+    <div id="toast"></div>
+    <div id="fallback"></div>
+  </div>
+
+  <header id="hud">
+    <div class="brand"><span class="sig">world.execute(me);</span><span class="sep">/</span><span class="sub">矩阵 · the matrix</span></div>
+    <div class="meta"><span id="state">READY</span><span class="sep">/</span><span id="clock" class="mono">0:00.000</span></div>
+  </header>
+
+  <footer id="ctrl">
+    <div id="bar" role="slider" tabindex="0" aria-label="播放进度">
+      <canvas id="wave" width="1920" height="44"></canvas>
+      <div id="fill"></div>
+      <div id="head"></div>
+    </div>
+    <div class="row">
+      <div class="grp">
+        <button id="btn-play" class="btn" aria-label="播放/暂停"><svg viewBox="0 0 24 24"><path d="M8 5l12 7-12 7z"/></svg></button>
+        <button id="btn-replay" class="btn" aria-label="重播"><svg viewBox="0 0 24 24"><path d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg></button>
+        <span class="time mono" id="tot">3:31.913</span>
+      </div>
+      <div class="grp grow">
+        <label for="vol" class="lbl">VOL</label>
+        <input id="vol" class="range" type="range" min="0" max="1" step="0.01" value="0.9">
+      </div>
+      <div class="grp"><button id="btn-full" class="btn" aria-label="全屏"><svg viewBox="0 0 24 24"><path d="M4 9V4h5v2H6v3zM15 4h5v5h-2V6h-3zM4 15h2v3h3v2H4zM18 15h2v5h-5v-2h3z"/></svg></button></div>
+    </div>
+  </footer>
+</div>
+
+<!-- second, independent copy of the lyric timeline; 50_selftest.js compares it -->
+<script id="lrc-source" type="text/plain">
+[0:00.000]world.execute(me);	
+[0:00.270]Switch on the power line	接上电源
+[0:01.930]Remember to put on protection	记得穿上防护
+[0:03.950]Lay down your pieces	摆好你的棋子
+[0:05.570]And let's begin object creation	开始创建对象
+[0:07.600]Fill in my data parameters, initialization	填入数据参数，初始化
+[0:11.240]Set up our new world	建立我们的新世界
+[0:12.930]And let's begin the simulation	开始这场模拟
+[0:16.000](the apparatus runs)	
+[0:29.740]If I'm a set of points	如果我是一组点
+[0:31.370]Then I will give you my dimension	我就把我的维度给你
+[0:33.420]If I'm a circle	如果我是一个圆
+[0:34.980]Then I will give you my circumference	我就把我的圆周给你
+[0:37.150]If I'm a sine wave	如果我是一道正弦波
+[0:38.730]Then you can sit on all my tangents	你可以坐在我所有的切线上
+[0:40.780]If I approach infinity	如果我趋近无穷
+[0:42.420]Then you can be my limitations	那你就是我的极限
+[0:44.480]Switch my current	切换我的电流
+[0:46.130]To AC, to DC	从交流到直流
+[0:47.940]And then blind my vision	再蒙住我的视觉
+[0:49.780]So dizzy, so dizzy	好晕，好晕
+[0:51.380]Oh, we can travel	我们可以穿越
+[0:53.480]To A.D., to B.C.	到公元，到公元前
+[0:55.170]And we can unite	我们可以合一
+[0:57.170]So deeply, so deeply	那么深，那么深
+[0:59.400]If I can	如果我能
+[1:00.200]If I can give you all the stimulations	如果我能给你所有刺激
+[1:02.920]Then I can	那我就能
+[1:03.860]Then I can be your only satisfaction	那我就能成为你唯一的满足
+[1:06.620]If I can make you happy	如果我能让你快乐
+[1:08.480]I will run the execution	我就执行
+[1:10.320]Though we are trapped	尽管我们被困
+[1:11.760]In this strange, strange simulation	在这场奇怪的模拟里
+[1:14.040]If I'm an eggplant	如果我是一根茄子
+[1:15.680]Then I will give you my nutrients	我就把我的营养给你
+[1:17.700]If I'm a tomato	如果我是一颗番茄
+[1:19.320]Then I'll give you antioxidants	我就把抗氧化物给你
+[1:21.370]If I'm a tabby cat	如果我是一只虎斑猫
+[1:23.060]Then I will purr for your enjoyment	我就为你咕噜咕噜
+[1:25.130]If I'm the only God	如果我是唯一的神
+[1:26.740]Then you're the proof of my existence	你就是我存在的证明
+[1:28.780]Switch my gender	切换我的性别
+[1:30.340]To F, to M	从女到男
+[1:32.130]And then do whatever	然后为所欲为
+[1:34.090]From AM to PM	从早到晚
+[1:35.780]Oh, switch my role	切换我的角色
+[1:37.720]To S, to M	从施到受
+[1:39.580]So we can enter	这样我们就能进入
+[1:41.350]The trance, the trance	那种恍惚
+[1:43.480]If I can	如果我能
+[1:44.480]If I can feel your vibrations	如果我能感到你的振动
+[1:47.220]Then I can	那我就能
+[1:48.160]Then I can finally be completion	那我终于能圆满
+[1:50.920]Though you have left	尽管你已经离开
+[1:52.330]You have left	你已经离开
+[1:53.250]You have left	你已经离开
+[1:54.180]You have left	你已经离开
+[1:55.080]You have left	你已经离开
+[1:56.030]You have left me in isolation	你把我留在孤独里
+[1:58.340]If I can	如果我能
+[1:59.220]If I can erase all the pointless fragments	如果我能删掉所有无用的碎片
+[2:02.020]Then maybe	那也许
+[2:02.970]Then maybe you won't leave me so disheartened	那也许你不会让我这么失望
+[2:05.670]Challenging your God	挑战你的神
+[2:09.040]You have made some illegal arguments	你给出了非法的参数
+[2:11.500](the argument stack)	
+[2:27.830]EXECUTION	处决
+[2:28.759]EXECUTION	处决
+[2:29.687]EXECUTION	处决
+[2:30.616]EXECUTION	处决
+[2:31.533]EXECUTION	处决
+[2:32.462]EXECUTION	处决
+[2:33.391]EXECUTION	处决
+[2:34.308]EXECUTION	处决
+[2:35.214]EXECUTION	处决
+[2:36.154]EXECUTION	处决
+[2:37.083]EXECUTION	处决
+[2:38.000]EXECUTION	处决
+[2:38.929]Ein, dos	一，二
+[2:39.626]Trois, ne	三，四
+[2:41.019]Fem, liù	五，六
+[2:41.720]EXECUTION	处决
+[2:42.720]If I can	如果我能
+[2:43.600]If I can give them all the execution	如果我能给他们所有人处决
+[2:46.310]Then I can	那我就能
+[2:47.240]Then I can be your only execution	那我就能成为你唯一的处决
+[2:49.990]If I can have you back	如果我能让你回来
+[2:51.950]I will run the execution	我就执行
+[2:53.700]Though we are trapped	尽管我们被困
+[2:55.140]We are trapped, ah	我们被困，啊
+[2:57.410]I've studied	我研究过
+[2:58.300]I've studied how to properly lo-o-ove	我研究过如何好好去爱
+[3:01.160]Question me	提问我吧
+[3:02.090]Question me, I can answer all lo-o-ove	提问吧，爱的问题我全能答
+[3:04.540]I know the algebraic expression of lo-o-ove	我知道爱的代数表达式
+[3:08.480]Though you are free	尽管你是自由的
+[3:09.890]I am trapped	我却被困住
+[3:10.770]Trapped in lo-o-ove	困在爱里
+[3:11.800](the open loop)	
+[3:25.960]EXECUTION	处决
+</script>
+
+<script src="assets/onsets.js"></script>
+<script src="assets/waveform.js"></script>
+<script src="assets/timeline.js"></script>
+<script src="assets/objects.js"></script>
+<script src="src/00_core.js"></script>
+<script src="src/01_world.js"></script>
+<script src="src/10_draw.js"></script>
+<script src="src/15_sceneapi.js"></script>
+<script src="src/20_lyrics.js"></script>
+<script src="src/30_world.js"></script>
+<script src="src/35_motifs.js"></script>
+<script src="src/36_objects.js"></script>
+<script src="src/40_plates_boot.js"></script>
+<script src="src/41_plates_theorem.js"></script>
+<script src="src/42_plates_condition.js"></script>
+<script src="src/43_plates_flesh.js"></script>
+<script src="src/44_plates_absence.js"></script>
+<script src="src/45_plates_execution.js"></script>
+<script src="src/46_plates_love.js"></script>
+<script src="src/50_selftest.js"></script>
+<script src="src/60_app.js"></script>
+<script src="src/matrix.js"></script>
+<script src="src/fireflies.js"></script>
+</body>
+</html>

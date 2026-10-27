@@ -1,0 +1,128 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>DEEPSEEK — timeline navigator</title>
+<style>
+:root{--bg:#04060a;--fg:#dff4ff;--dim:#6f93a6;--cyan:#5fd8ff;--warm:#ffc27a}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:Bahnschrift,"Segoe UI",sans-serif}
+#app{display:grid;grid-template-rows:auto auto auto 1fr;height:100%}
+header{display:flex;align-items:baseline;gap:18px;padding:14px 22px;border-bottom:1px solid rgba(95,216,255,.12)}
+header h1{font-size:14px;font-weight:500;letter-spacing:.28em;margin:0;color:var(--cyan)}
+#clock{font:300 26px Consolas,monospace;color:#fff;letter-spacing:.06em}
+#now{color:var(--dim);font-size:12px;letter-spacing:.12em}
+#bar{position:relative;height:46px;margin:0 22px;cursor:pointer}
+#bar canvas{position:absolute;inset:0;width:100%;height:100%}
+#head{position:absolute;top:0;bottom:0;width:1px;background:#fff;box-shadow:0 0 8px #5fd8ff;left:0}
+main{overflow:auto;padding:6px 22px 40px}
+.row{display:grid;grid-template-columns:86px 52px 132px 1fr 210px 132px;gap:12px;align-items:center;padding:7px 10px;border-bottom:1px solid rgba(95,216,255,.06);cursor:pointer;font-size:13px;color:#b9d6e4}
+.row:hover{background:rgba(95,216,255,.06)}
+.row.on{background:rgba(95,216,255,.13);color:#fff;box-shadow:inset 2px 0 0 var(--cyan)}
+.row .t{font-family:Consolas,monospace;color:var(--cyan)}
+.row .a{color:var(--dim);letter-spacing:.08em;font-size:11px}
+.row .txt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .m{color:var(--dim);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .fx{color:var(--warm);font-family:Consolas,monospace;font-size:11px;text-align:right}
+.controls{display:flex;gap:10px;padding:8px 22px;align-items:center;color:var(--dim);font-size:12px}
+button{background:transparent;color:var(--fg);border:1px solid rgba(95,216,255,.25);padding:5px 10px;cursor:pointer;font:inherit;font-size:12px;letter-spacing:.1em}
+button:hover{border-color:var(--cyan);color:#fff}
+</style></head><body>
+<div id="app">
+  <header>
+    <h1>DEEPSEEK / TIMELINE</h1>
+    <div id="clock">0:00.000</div>
+    <div id="now">click a line to seek</div>
+    <div style="flex:1"></div>
+    <div id="act" style="color:var(--dim);letter-spacing:.2em;font-size:12px"></div>
+  </header>
+  <div class="controls">
+    <button id="play">PLAY</button>
+    <button id="back">-5s</button>
+    <button id="fwd">+5s</button>
+    <button id="copy">COPY TIME</button>
+    <span id="msg"></span>
+  </div>
+  <div id="bar"><canvas id="wave" width="1920" height="46"></canvas><div id="head"></div></div>
+  <main id="list"></main>
+</div>
+<audio id="au" src="../Mili - world.execute(me);.mp3" preload="auto"></audio>
+<script>
+var DATA = __DATA__;
+var au = document.getElementById('au');
+var list = document.getElementById('list');
+var clock = document.getElementById('clock');
+var nowEl = document.getElementById('now');
+var actEl = document.getElementById('act');
+var head = document.getElementById('head');
+var bar = document.getElementById('bar');
+var msg = document.getElementById('msg');
+var rows = [];
+var current = -1;
+DATA.cues.forEach(function (c, i) {
+  var d = document.createElement('div');
+  d.className = 'row';
+  d.innerHTML = '<span class="t">' + c.time + '</span><span class="a">' + c.act + '</span><span class="txt">' + c.text.replace(/</g,'&lt;') + '</span><span class="m">' + c.motion + '</span><span class="m">' + c.render + '</span><span class="fx">FX ' + c.fx + '</span>';
+  d.addEventListener('click', function () { seek(c.t); });
+  list.appendChild(d);
+  rows.push({ el: d, cue: c });
+});
+function seek(t) { try { au.currentTime = t; } catch (e) {} au.play().catch(function(){}); render(); }
+document.getElementById('play').addEventListener('click', function () {
+  if (au.paused) au.play().catch(function(){}); else au.pause();
+});
+document.getElementById('back').addEventListener('click', function () { seek(Math.max(0, au.currentTime - 5)); });
+document.getElementById('fwd').addEventListener('click', function () { seek(Math.min(DATA.duration - 0.05, au.currentTime + 5)); });
+document.getElementById('copy').addEventListener('click', function () {
+  var s = fmt(au.currentTime);
+  if (navigator.clipboard) navigator.clipboard.writeText(s);
+  msg.textContent = 'copied ' + s;
+  setTimeout(function () { msg.textContent = ''; }, 1500);
+});
+function fmt(t) {
+  var m = Math.floor(t / 60), s = Math.floor(t % 60), ms = Math.round((t - Math.floor(t)) * 1000);
+  return m + ':' + String(s).padStart(2, '0') + '.' + String(ms).padStart(3, '0');
+}
+function drawWave() {
+  var c = document.getElementById('wave'), x = c.getContext('2d');
+  var W = c.width, H = c.height;
+  x.clearRect(0, 0, W, H);
+  x.fillStyle = 'rgba(95,216,255,.08)';
+  x.fillRect(0, H * 0.25, W, H * 0.5);
+  x.fillStyle = 'rgba(95,216,255,.55)';
+  DATA.strongOnsets.forEach(function (ms) {
+    var px = ms / (DATA.duration * 1000) * W;
+    x.fillRect(px, H * 0.18, 1, H * 0.64);
+  });
+  x.fillStyle = 'rgba(255,194,122,.5)';
+  DATA.cues.forEach(function (c) {
+    var px = c.t / DATA.duration * W;
+    x.fillRect(px, H - 10, 1, 8);
+  });
+}
+drawWave();
+function render() {
+  var t = au.currentTime || 0;
+  clock.textContent = fmt(t);
+  var idx = -1;
+  for (var i = 0; i < DATA.cues.length; i++) if (DATA.cues[i].t <= t + 0.001) idx = i;
+  if (idx !== current) {
+    if (current >= 0 && rows[current]) rows[current].el.classList.remove('on');
+    current = idx;
+    if (idx >= 0 && rows[idx]) {
+      rows[idx].el.classList.add('on');
+      nowEl.textContent = DATA.cues[idx].text + '   ·   FX ' + DATA.cues[idx].fx;
+      actEl.textContent = DATA.cues[idx].act;
+      rows[idx].el.scrollIntoView({ block: 'nearest' });
+    }
+  }
+  head.style.left = (t / DATA.duration * 100) + '%';
+}
+bar.addEventListener('click', function (e) {
+  var r = bar.getBoundingClientRect();
+  seek((e.clientX - r.left) / r.width * DATA.duration);
+});
+document.addEventListener('keydown', function (e) {
+  if (e.key === ' ') { e.preventDefault(); if (au.paused) au.play().catch(function(){}); else au.pause(); }
+  if (e.key === 'ArrowLeft') seek(Math.max(0, au.currentTime - 5));
+  if (e.key === 'ArrowRight') seek(Math.min(DATA.duration - 0.05, au.currentTime + 5));
+});
+au.addEventListener('timeupdate', render);
+render();
+</script></body></html>

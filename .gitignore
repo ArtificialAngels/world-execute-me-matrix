@@ -1,0 +1,45 @@
+# ---- media / heavy artifacts: kept locally, not pushed ----
+*.mp4
+*.mp3
+*.zip
+frames/
+stills/
+archive/
+poster.jpg
+Mili-world.execute(me);.lrc
+
+# ---- old experiments / prototypes (kept locally) ----
+anime/
+ascii/
+badapple/
+codeanime/
+demo/
+film/
+mv/
+outline/
+sample/
+test12/
+wow/
+scifi/
+ref/
+script/
+timeline/
+
+# reference art used only by the old silhouette prototype
+assets/char-anime.js
+assets/char_anime.png
+
+# old docs / launcher for the archived silhouette version
+HANDOFF.md
+SCRIPT.md
+SCRIPT-COMPLETE.md
+SCRIPT_EN.md
+播放-MV.cmd
+
+# ---- tooling / OS ----
+node_modules/
+_tmp/
+_tools/*-list.json
+*.log
+.DS_Store
+Thumbs.db

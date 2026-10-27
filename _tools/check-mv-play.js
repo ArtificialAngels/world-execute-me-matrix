@@ -1,0 +1,22 @@
+'use strict';
+const path = require('path');
+const { chromium } = require('playwright');
+(async () => {
+  const b = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-gl=angle','--use-angle=swiftshader','--autoplay-policy=no-user-gesture-required'] });
+  const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
+  const errs = []; p.on('pageerror', e => errs.push(e.message));
+  await p.goto('file:///' + path.resolve(__dirname, '..', 'mv', 'index.html').replace(/\\/g, '/') + '?autostart=1', { waitUntil: 'load' });
+  await p.waitForTimeout(6000);
+  const st = await p.evaluate(() => ({ audio: window.TEST_AUDIO ? +window.TEST_AUDIO.currentTime.toFixed(2) : null, paused: window.TEST_AUDIO ? window.TEST_AUDIO.paused : null, t: window.__lastT, dur: window.FILM.duration }));
+  console.log('PLAY', JSON.stringify(st), 'errors:', errs.length ? errs.slice(0,3).join(' | ') : 'none');
+  await p.evaluate(() => { window.FILM.freeze(64); });
+  await p.waitForTimeout(300);
+  await p.screenshot({ path: path.resolve(__dirname, '..', 'frames', 'mv', 'final_64.png') });
+  await p.evaluate(() => { window.FILM.freeze(152); });
+  await p.waitForTimeout(300);
+  await p.screenshot({ path: path.resolve(__dirname, '..', 'frames', 'mv', 'final_152.png') });
+  await p.evaluate(() => { window.FILM.freeze(190); });
+  await p.waitForTimeout(300);
+  await p.screenshot({ path: path.resolve(__dirname, '..', 'frames', 'mv', 'final_190.png') });
+  await b.close();
+})().catch(e => { console.error('FAILED', e.message); process.exit(1); });

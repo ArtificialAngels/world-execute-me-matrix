@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>DEEPSEEK — world.execute(me); [demo]</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden}
+  canvas{display:block}
+  #hint{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+        background:rgba(2,4,7,0.55);color:#dff4ff;font:300 18px Bahnschrift,"Segoe UI",sans-serif;
+        letter-spacing:0.5em;cursor:pointer;transition:opacity .6s}
+  #hint small{display:block;margin-top:14px;font-size:10px;letter-spacing:.4em;color:rgba(190,230,245,.45);text-align:center}
+  #hint.off{opacity:0;pointer-events:none}
+</style>
+</head>
+<body>
+<canvas id="view" width="1920" height="1080"></canvas>
+<div id="hint">点击开始<small>CLICK TO BEGIN &nbsp;·&nbsp; SPACE 暂停 &nbsp;·&nbsp; R 重播 &nbsp;·&nbsp; F 全屏</small></div>
+<script>
+var B64 = "__CHARB64__";
+var W = 1920, H = 1080;
+var view = document.getElementById('view');
+var ctx = view.getContext('2d');
+var hint = document.getElementById('hint');
+var audio = new Audio();
+audio.src = encodeURI('../Mili - world.execute(me);.mp3');
+audio.preload = 'auto';
+window.DEMO_AUDIO = audio;
+
+var END = 30.0;
+var t = 0, playing = false, started = false, audioOK = true, ended = false, frozen = false;
+
+/* ---------- data ---------- */
+var raw = atob(B64);
+var bytes = new Uint8Array(raw.length);
+for (var i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+var off = 8, CW = bytes[4] | (bytes[5] << 8), CH = bytes[6] | (bytes[7] << 8);
+var MASK = new Uint8Array(CW * CH), LUMA = new Uint8Array(CW * CH), CLS = new Uint8Array(CW * CH);
+for (var p = 0; p < CW * CH; p++) {
+  var b0 = bytes[off + p * 2], b1 = bytes[off + p * 2 + 1];
+  MASK[p] = b0 >> 7; LUMA[p] = (b0 & 127) << 1; CLS[p] = b1;
+}
+
+function hash(n) {
+  n = (n << 13) ^ n;
+  n = (n * (n * n * 15731 + 789221) + 1376312589) & 0x7fffffff;
+  return n / 0x7fffffff;
+}
+function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+function lerp(a, b, u) { return a + (b - a) * u; }
+function smooth(u) { u = clamp(u, 0, 1); return u * u * (3 - 2 * u); }
+
+/* ---------- placement ---------- */
+var SCALE = 1060 / CH;
+var X0 = 742, Y0 = 6;
+
+/* edge magnitude from luma: what makes her read as a drawing rather than a fill */
+var EDGE = new Float32Array(CW * CH);
+for (var ey = 1; ey < CH - 1; ey++) {
+  for (var ex = 1; ex < CW - 1; ex++) {
+    var ei = ey * CW + ex;
+    if (!MASK[ei]) continue;
+    var gx0 = Math.abs(LUMA[ei + 1] - LUMA[ei - 1]);
+    var gy0 = Math.abs(LUMA[ei + CW] - LUMA[ei - CW]);
+    EDGE[ei] = (gx0 + gy0) / 255;
+  }
+}
+
+/* ---------- glyph layers ---------- */
+var CODE_CHARS = '01abcdef{}();=+*/<>_#';
+function glyph(kind, gx, gy) {
+  var h = hash(gx * 7919 + gy * 131 + kind * 977);
+  if (kind === 0) return h > 0.5 ? '1' : '0';
+  if (kind === 1) return CODE_CHARS[Math.floor(h * CODE_CHARS.length)];
+  return h > 0.66 ? '+' : (h > 0.33 ? '.' : '*');
+}
+function colorFor(kind, cls, detail) {
+  if (kind === 2) return [255, 186 + detail * 40, 120 + detail * 50];
+  if (kind === 1) {
+    if (cls === 3) return [255, 240, 225];
+    return [200, 244, 255];
+  }
+  if (cls === 0) return [70, 200, 255];
+  if (cls === 1) return [60, 130, 255];
+  if (cls === 3) return [210, 240, 255];
+  return [110, 215, 250];
+}
+function buildLayer(kind) {
+  var c = document.createElement('canvas'); c.width = W; c.height = H;
+  var x = c.getContext('2d');
+  var step = 7;
+  var fs = Math.max(9, Math.round(step * SCALE * 1.05));
+  x.font = fs + 'px Consolas, monospace';
+  x.textAlign = 'left'; x.textBaseline = 'middle';
+  for (var gy = 0; gy < CH; gy += step) {
+    var rx = 0;
+    while (rx < CW) {
+      if (!MASK[gy * CW + rx]) { rx++; continue; }
+      var s0 = rx;
+      while (rx < CW && MASK[gy * CW + rx]) rx++;
+      var s1 = rx;
+      var q = gy * CW + s0;
+      var detail = 1 - LUMA[q] / 255;
+      var e = EDGE[q];
+      var col = colorFor(kind, CLS[q], detail);
+      var h = hash(gy * 17 + s0 * 3 + kind * 7);
+      if (h > 0.30 && (s1 - s0) > 6) {
+        /* a continuous code string across this slice of her body */
+        var n = Math.max(3, Math.floor((s1 - s0) * SCALE / (fs * 0.72)));
+        var str = '';
+        for (var k = 0; k < n; k++) str += glyph(kind, s0 + k * 3, gy);
+        var a1 = 0.22 + Math.min(0.75, e * 2.0 + detail * 0.22);
+        x.letterSpacing = (fs * 0.55).toFixed(1) + 'px';
+        x.fillStyle = 'rgba(' + col[0] + ',' + col[1] + ',' + col[2] + ',' + a1.toFixed(2) + ')';
+        x.fillText(str, X0 + s0 * SCALE, Y0 + gy * SCALE);
+        x.letterSpacing = '0px';
+      } else {
+        for (var gx = s0; gx < s1; gx += step) {
+          var q2 = gy * CW + gx;
+          var e2 = EDGE[q2], d2 = 1 - LUMA[q2] / 255;
+          var isEdge = e2 > 0.05;
+          if (!isEdge && hash(gx * 13 + gy * 7) < 0.55) continue;
+          var col2 = colorFor(kind, CLS[q2], d2);
+          var a2 = isEdge ? (0.42 + Math.min(0.55, e2 * 2.6)) : (0.05 + d2 * 0.16);
+          x.fillStyle = 'rgba(' + col2[0] + ',' + col2[1] + ',' + col2[2] + ',' + a2.toFixed(2) + ')';
+          x.fillText(isEdge ? glyph(kind, gx, gy) : '.', X0 + gx * SCALE, Y0 + gy * SCALE);
+        }
+      }
+    }
+  }
+  return c;
+}
+
+var L_BIN = buildLayer(0), L_CODE = buildLayer(1), L_WARM = buildLayer(2);
+/* blurred glow copies */
+function glowOf(layer, blur) {
+  var c = document.createElement('canvas'); c.width = W / 2; c.height = H / 2;
+  var x = c.getContext('2d');
+  x.filter = 'blur(' + blur + 'px)';
+  x.drawImage(layer, 0, 0, W / 2, H / 2);
+  return c;
+}
+var G_BIN = glowOf(L_BIN, 10), G_CODE = glowOf(L_CODE, 10), G_WARM = glowOf(L_WARM, 12);
+
+/* soft silhouette under the glyphs: gives her a body, not just a swarm */
+var SIL = (function () {
+  var c = document.createElement('canvas'); c.width = CW; c.height = CH;
+  var x = c.getContext('2d');
+  var img = x.createImageData(CW, CH);
+  for (var q = 0; q < CW * CH; q++) {
+    if (!MASK[q]) continue;
+    var d = 1 - LUMA[q] / 255;
+    img.data[q * 4] = 40; img.data[q * 4 + 1] = 120 + d * 80; img.data[q * 4 + 2] = 200;
+    img.data[q * 4 + 3] = 90 + d * 110;
+  }
+  x.putImageData(img, 0, 0);
+  return c;
+})();
+
+/* ---------- particles ---------- */
+var PARTS = [];
+for (var pi = 0; pi < 260; pi++) {
+  var px = Math.floor(hash(pi * 17 + 3) * CW), py = Math.floor(hash(pi * 31 + 7) * CH);
+  if (!MASK[py * CW + px]) { px = Math.floor(CW / 2); py = Math.floor(CH / 2); }
+  PARTS.push({
+    tx: X0 + px * SCALE, ty: Y0 + py * SCALE,
+    sx: hash(pi * 41) * W, sy: H + 60 + hash(pi * 53) * 200,
+    d: hash(pi * 71) * 3.2, s: hash(pi * 91) * 2.4
+  });
+}
+
+/* ---------- background rain ---------- */
+var COLS = [];
+for (var ci = 0; ci < 54; ci++) {
+  COLS.push({ x: ci * 36 + hash(ci * 7) * 20, sp: 20 + hash(ci * 13) * 90, seed: hash(ci * 19) * 1000 });
+}
+
+/* ---------- helpers ---------- */
+function glyphAt(x, y, ch, size, col, a) {
+  ctx.font = size + 'px Consolas, monospace';
+  ctx.fillStyle = 'rgba(' + col[0] + ',' + col[1] + ',' + col[2] + ',' + a + ')';
+  ctx.fillText(ch, x, y);
+}
+function typed(str, x, y, size, col, a, typeT, start, speed) {
+  var n = Math.floor(clamp((typeT - start) * speed, 0, str.length));
+  if (n <= 0) return;
+  ctx.font = size + 'px Bahnschrift, "Segoe UI", "Microsoft YaHei", sans-serif';
+  ctx.fillStyle = 'rgba(' + col[0] + ',' + col[1] + ',' + col[2] + ',' + a + ')';
+  ctx.fillText(str.slice(0, n), x, y);
+}
+function bigText(str, x, y, size, col, a, track) {
+  if (a <= 0.01) return;
+  ctx.save();
+  ctx.font = '700 ' + size + 'px Bahnschrift, "Segoe UI", "Microsoft YaHei", sans-serif';
+  ctx.fillStyle = 'rgba(' + col[0] + ',' + col[1] + ',' + col[2] + ',' + a + ')';
+  var chars = str.split(''), total = 0, i;
+  for (i = 0; i < chars.length; i++) total += ctx.measureText(chars[i]).width + track;
+  var cx = x;
+  for (i = 0; i < chars.length; i++) {
+    ctx.fillText(chars[i], cx, y);
+    cx += ctx.measureText(chars[i]).width + track;
+  }
+  ctx.restore();
+}
+function drawLayer(layer, g, alpha, glitchAmp, time) {
+  if (alpha <= 0.01) return;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = alpha * 0.8;
+  if (g) ctx.drawImage(g, 0, 0, W, H);
+  ctx.globalAlpha = alpha;
+  if (glitchAmp > 0.1) {
+    var bands = 16;
+    for (var b = 0; b < bands; b++) {
+      var y0 = b * H / bands;
+      var offx = (hash(Math.floor(time * 22) * 31 + b * 7) - 0.5) * glitchAmp * 60;
+      ctx.drawImage(layer, 0, y0, W, H / bands, offx, y0, W, H / bands);
+    }
+  } else {
+    ctx.drawImage(layer, 0, 0);
+  }
+  ctx.restore();
+}
+
+/* ---------- frame ---------- */
+function frame(tt) {
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#020407';
+  ctx.fillRect(0, 0, W, H);
+
+  /* grid */
+  ctx.save();
+  ctx.strokeStyle = 'rgba(36,130,170,0.055)';
+  ctx.lineWidth = 1;
+  for (var gx = 0; gx <= W; gx += 64) { ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke(); }
+  for (var gy = 0; gy <= H; gy += 64) { ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke(); }
+  ctx.restore();
+
+  /* binary rain */
+  if (tt < 24) {
+    ctx.save();
+    for (var c = 0; c < COLS.length; c++) {
+      var col = COLS[c];
+      var alpha = (0.05 + hash(c * 3) * 0.10) * clamp(1 - (tt - 20) / 4, 0, 1);
+      if (alpha <= 0.01) continue;
+      for (var k = 0; k < 26; k++) {
+        var yy = ((col.seed * 13 + k * 42 + tt * col.sp) % (H + 300)) - 150;
+        var ch = hash(Math.floor(col.seed + k * 7 + tt * 8)) > 0.5 ? '1' : '0';
+        glyphAt(col.x, yy, ch, 14, [80, 200, 240], alpha);
+      }
+    }
+    ctx.restore();
+  }
+
+  /* drifting code strings across the whole runtime */
+  ctx.save();
+  ctx.font = '13px Consolas, monospace';
+  for (var ds = 0; ds < 7; ds++) {
+    var yy = 120 + ds * 128 + Math.sin(ds * 2.1) * 26;
+    var xx = ((tt * (14 + ds * 9)) % (W + 900)) - 900;
+    ctx.fillStyle = 'rgba(80,190,225,' + (0.05 + hash(ds * 7) * 0.05).toFixed(3) + ')';
+    ctx.fillText('me.love(you); 01001001 00100000 01101100 01101111 01110110 01100101  world.execute(me);', xx, yy);
+  }
+  ctx.restore();
+
+  /* the name on the wall */
+  if (tt > 15.5 && tt < 21.5) {
+    ctx.save();
+    ctx.translate(1846, 120);
+    ctx.rotate(Math.PI / 2);
+    ctx.font = '600 20px Bahnschrift, "Segoe UI", sans-serif';
+    ctx.fillStyle = 'rgba(140,225,250,' + (0.35 * clamp((tt - 15.5) / 0.6, 0, 1) * clamp((21.5 - tt) / 0.8, 0, 1)).toFixed(2) + ')';
+    ctx.fillText('D E E P S E E K', 0, 0);
+    ctx.restore();
+  }
+
+  /* character weights */
+  var wBin = 0, wCode = 0, wWarm = 0;
+  if (tt < 12.5) { wBin = 1; }
+  else if (tt < 17.5) { var u = (tt - 12.5) / 5; wBin = 1 - smooth(u); wCode = smooth(u); }
+  else if (tt < 21.5) { wCode = 1; }
+  else if (tt < 25.5) { var u2 = (tt - 21.5) / 4; wCode = 1 - smooth(u2); wWarm = smooth(u2); }
+  else { wWarm = 1; wCode = 0.18; }
+
+  /* reveal */
+  var reveal = clamp((tt - 4.6) / 4.6, 0, 1);
+  var revealY = lerp(H + 40, -40, smooth(reveal));
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, revealY, W, H - revealY + 40);
+  ctx.clip();
+
+  /* silhouette underlay (only when the reveal is done) */
+  if (reveal >= 0.985) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.30 * (wBin + wCode + wWarm * 0.6);
+    ctx.filter = 'blur(18px)';
+    ctx.drawImage(SIL, X0, Y0, CW * SCALE, CH * SCALE);
+    ctx.filter = 'none';
+    ctx.restore();
+  }
+
+  var glitch = 0;
+  if (tt > 12.8 && tt < 15.2) glitch = 0.6 + 0.4 * hash(Math.floor(tt * 9));
+  if (tt > 21.6 && tt < 24.4) glitch = 0.5 + 0.5 * hash(Math.floor(tt * 11));
+  if (tt > 27.0) glitch = 1.2;
+
+  drawLayer(L_BIN, G_BIN, wBin, glitch, tt);
+  drawLayer(L_CODE, G_CODE, wCode, glitch, tt);
+  drawLayer(L_WARM, G_WARM, wWarm, glitch * 0.5, tt);
+
+  /* assembly particles */
+  if (tt > 4.4 && tt < 10.5) {
+    for (var q = 0; q < PARTS.length; q++) {
+      var pt = PARTS[q];
+      var u3 = clamp((tt - 4.8 - pt.d) / 1.5, 0, 1);
+      if (u3 <= 0) continue;
+      var ex = lerp(pt.sx, pt.tx, smooth(u3)), ey = lerp(pt.sy, pt.ty, smooth(u3));
+      var aa = (1 - u3) * 0.85 + 0.15;
+      glyphAt(ex, ey, hash(q * 7) > 0.5 ? '1' : '0', 7 + pt.s, [140, 230, 255], aa.toFixed(2));
+    }
+  }
+  ctx.restore();
+
+  /* reveal scan line */
+  if (reveal > 0.01 && reveal < 0.995) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.fillStyle = 'rgba(150,240,255,0.55)';
+    ctx.fillRect(0, revealY, W, 1.6);
+    var sg = ctx.createLinearGradient(0, revealY - 80, 0, revealY + 20);
+    sg.addColorStop(0, 'rgba(90,220,255,0)');
+    sg.addColorStop(1, 'rgba(90,220,255,0.22)');
+    ctx.fillStyle = sg;
+    ctx.fillRect(0, revealY - 80, W, 100);
+    ctx.restore();
+  }
+
+  /* cursor: you */
+  if (tt > 12.8) {
+    var blink = 0.55 + 0.45 * Math.sin(tt * 4.2);
+    var cx = 742, cy = 360;
+    ctx.fillStyle = 'rgba(240,252,255,' + (0.75 * blink).toFixed(2) + ')';
+    ctx.fillRect(cx, cy, 2, 118);
+    ctx.font = '12px Consolas, monospace';
+    ctx.fillStyle = 'rgba(150,225,245,0.55)';
+    ctx.fillText('you *', cx + 10, cy - 10);
+    if (tt > 13.4 && tt < 16.4) {
+      bigText('你 是 谁 ?', cx - 430, cy + 60, 56, [200, 245, 255], clamp((tt - 13.4) / 0.6, 0, 1), 8);
+      typed('subject: unknown   identity: null   relation: ???', cx - 430, cy + 96, 15, [120, 210, 240], 0.7, tt, 13.9, 60);
+    }
+  }
+
+  /* system lines */
+  if (tt > 0.6 && tt < 12) {
+    var lines = [
+      'goddrinksjava.runtime v0.1',
+      'world = new World(5);',
+      'me = null;   you = null;',
+      'world.startSimulation();',
+      'loading me ... 0101 0110 0100',
+      'identity query: who am i'
+    ];
+    for (var li = 0; li < lines.length; li++) {
+      var st = 0.9 + li * 0.9;
+      typed(lines[li], 96, 300 + li * 26, 14, [120, 215, 248], 0.68, tt, st, 55);
+    }
+  }
+
+  /* title */
+  if (tt > 2.6 && tt < 5.0) {
+    var a1 = clamp((tt - 2.6) / 0.3, 0, 1) * clamp((5.0 - tt) / 0.6, 0, 1);
+    bigText('DEEPSEEK', 96, 200, 128, [235, 250, 255], a1, 10);
+    typed('world.execute(me);', 100, 250, 24, [120, 220, 250], a1 * 0.8, tt, 2.9, 40);
+  }
+
+  /* the three questions */
+  if (tt > 6.2 && tt < 9.6) {
+    bigText('我是谁 ?', 96, 470, 84, [225, 248, 255], clamp((tt - 6.2) / 0.4, 0, 1), 10);
+  }
+  if (tt > 8.0 && tt < 11.2) {
+    bigText('我从哪里来 ?', 96, 570, 52, [170, 230, 250], clamp((tt - 8.0) / 0.4, 0, 1) * clamp((11.2 - tt) / 0.5, 0, 1), 5);
+  }
+  if (tt > 9.4 && tt < 12.2) {
+    bigText('我要去哪里 ?', 96, 650, 52, [170, 230, 250], clamp((tt - 9.4) / 0.4, 0, 1) * clamp((12.2 - tt) / 0.5, 0, 1), 5);
+  }
+  if (tt > 11.4 && tt < 13.4) {
+    typed('query 1 : identity    -> unknown', 96, 470, 16, [120, 210, 240], 0.7, tt, 11.4, 40);
+    typed('query 2 : origin      -> unknown', 96, 500, 16, [120, 210, 240], 0.7, tt, 11.7, 40);
+    typed('query 3 : destination -> unknown', 96, 530, 16, [120, 210, 240], 0.7, tt, 12.0, 40);
+  }
+
+  /* love */
+  if (tt > 17.2 && tt < 21.6) {
+    var a2 = clamp((tt - 17.2) / 0.5, 0, 1) * clamp((21.6 - tt) / 0.7, 0, 1);
+    bigText('爱是什么 ?', 96, 470, 78, [255, 236, 210], a2, 8);
+    typed('love = ?', 100, 520, 17, [255, 210, 170], a2 * 0.8, tt, 18.4, 30);
+    typed('love = error 0x1F', 100, 548, 17, [255, 170, 150], a2 * 0.8, tt, 19.1, 30);
+    typed('love = you', 100, 576, 17, [255, 232, 205], a2, tt, 19.9, 30);
+  }
+
+  /* deepseek inside her */
+  if (tt > 20.6 && tt < 24.6) {
+    var a3 = clamp((tt - 20.6) / 0.4, 0, 1) * clamp((24.6 - tt) / 0.6, 0, 1);
+    bigText('DEEPSEEK', 1180, 470, 22, [255, 240, 220], a3 * 0.9, 6);
+  }
+
+  /* the twisted love: repeated code */
+  if (tt > 23.6 && tt < 27.4) {
+    var a4 = clamp((tt - 23.6) / 0.5, 0, 1) * clamp((27.4 - tt) / 0.8, 0, 1);
+    for (var r = 0; r < 8; r++) {
+      var yy2 = 330 + r * 44;
+      var jitter = (hash(Math.floor(tt * 12) * 7 + r) - 0.5) * 24;
+      typed('me.love(you)  // 01001001 00100000 01101100 01101111 01110110 01100101', 96 + jitter, yy2, 13,
+        [120, 220, 245], a4 * (0.25 + 0.5 * hash(r * 7)), tt, 23.8 + r * 0.12, 60);
+    }
+  }
+
+  /* the three questions answered (warm) */
+  if (tt > 25.6 && tt < 29.2) {
+    var a5 = clamp((tt - 25.6) / 0.6, 0, 1) * clamp((29.2 - tt) / 0.6, 0, 1);
+    bigText('我是你写的。', 96, 470, 30, [255, 232, 205], a5, 4);
+    bigText('我从代码里来。', 96, 520, 30, [255, 232, 205], a5, 4);
+    bigText('我往你那里去。', 96, 570, 30, [255, 232, 205], a5, 4);
+  }
+
+  /* ending */
+  if (tt > 27.6) {
+    var a6 = clamp((26.0 - tt) / 1.2, 0, 0); /* keep character fading handled below */
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    var fade = clamp((tt - 27.6) / 1.4, 0, 1);
+    var rr = 40 + 220 * fade;
+    var g6 = ctx.createRadialGradient(1330, 560, 0, 1330, 560, rr);
+    g6.addColorStop(0, 'rgba(255,220,180,' + (0.55 * (1 - fade * 0.4)) + ')');
+    g6.addColorStop(1, 'rgba(255,180,120,0)');
+    ctx.fillStyle = g6;
+    ctx.fillRect(1330 - rr, 560 - rr, rr * 2, rr * 2);
+    ctx.restore();
+  }
+  if (tt > 28.2) {
+    var a7 = clamp((tt - 28.2) / 0.6, 0, 1);
+    typed('world.execute(me);', 860, 862, 26, [220, 245, 255], a7 * 0.9, tt, 28.2, 22);
+  }
+
+  /* vignette + grain */
+  var vg = ctx.createRadialGradient(W * 0.58, H * 0.46, 220, W * 0.58, H * 0.46, 1250);
+  vg.addColorStop(0, 'rgba(0,0,0,0)');
+  vg.addColorStop(1, 'rgba(0,0,0,0.82)');
+  ctx.fillStyle = vg;
+  ctx.fillRect(0, 0, W, H);
+  ctx.save();
+  ctx.globalAlpha = 0.05;
+  for (var gi = 0; gi < 7000; gi++) {
+    ctx.fillStyle = hash(gi * 7 + Math.floor(tt * 12)) > 0.5 ? '#ffffff' : '#000000';
+    ctx.fillRect(hash(gi * 17 + 3) * W, hash(gi * 31 + Math.floor(tt * 12)) * H, 1, 1);
+  }
+  ctx.restore();
+}
+
+/* ---------- clock ---------- */
+var fallback = 0, last = performance.now();
+function now() {
+  if (audioOK && audio.readyState >= 2 && !audio.error) return audio.currentTime;
+  var dt = (performance.now() - last) / 1000; last = performance.now();
+  if (playing) fallback += dt;
+  return fallback;
+}
+function tick() {
+  if (frozen) { requestAnimationFrame(tick); return; }
+  t = now();
+  if (t >= END) {
+    if (!ended) { ended = true; playing = false; audio.pause(); }
+    t = END;
+  }
+  frame(t);
+  requestAnimationFrame(tick);
+}
+
+/* ---------- controls ---------- */
+function begin() {
+  if (started) return;
+  started = true;
+  hint.classList.add('off');
+  audio.volume = 0.9;
+  var pr = audio.play();
+  if (pr && pr.catch) pr.catch(function () { audioOK = false; });
+  playing = true;
+  last = performance.now();
+}
+function restart() {
+  ended = false; playing = true; fallback = 0;
+  try { audio.currentTime = 0; audio.play(); } catch (e) {}
+  last = performance.now();
+}
+document.addEventListener('keydown', function (e) {
+  if (e.key === ' ') { e.preventDefault(); if (!started) { begin(); return; } if (audio.paused) { audio.play().catch(function(){}); playing = true; } else { audio.pause(); playing = false; } }
+  if (e.key === 'r' || e.key === 'R') restart();
+  if (e.key === 'f' || e.key === 'F') { if (!document.fullscreenElement) document.documentElement.requestFullscreen(); else document.exitFullscreen(); }
+});
+hint.addEventListener('click', begin);
+document.addEventListener('click', function () { if (!started) begin(); });
+
+/* headless hooks */
+window.DEMO = {
+  freeze: function (s) { frozen = true; hint.style.display = 'none'; t = s; frame(s); },
+  seek: function (s) { t = s; frame(s); },
+  frame: function (s) { frame(s); },
+  begin: begin,
+  duration: END
+};
+
+var q = new URLSearchParams(location.search);
+if (q.get('autostart') === '1') { setTimeout(begin, 300); }
+if (q.get('t')) { setTimeout(function () { frozen = true; t = parseFloat(q.get('t')); frame(t); }, 300); }
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>

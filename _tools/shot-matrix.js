@@ -1,0 +1,21 @@
+'use strict';
+const path = require('path');
+const { chromium } = require('playwright');
+(async () => {
+  const root = path.resolve(__dirname, '..');
+  const b = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-gl=angle','--use-angle=swiftshader','--autoplay-policy=no-user-gesture-required','--hide-scrollbars'] });
+  const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
+  const errs = []; p.on('pageerror', e => errs.push(e.message));
+  await p.goto('file:///' + path.join(root, 'index.html').replace(/\\/g, '/'), { waitUntil: 'load' });
+  await p.waitForTimeout(2500);
+  await p.screenshot({ path: path.join(root, 'frames', 'matrix', 'start.png') });
+  const start = await p.$('#start');
+  if (start) await start.click();
+  await p.waitForTimeout(5000);
+  await p.screenshot({ path: path.join(root, 'frames', 'matrix', 'm5.png') });
+  await p.waitForTimeout(20000);
+  await p.screenshot({ path: path.join(root, 'frames', 'matrix', 'm25.png') });
+  const st = await p.evaluate(() => ({ t: window.APP && window.APP.time ? window.APP.time() : null, audio: document.getElementById('audio') ? document.getElementById('audio').currentTime : null }));
+  console.log('state', JSON.stringify(st), 'errors:', errs.length ? errs.slice(0, 4).join(' | ') : 'none');
+  await b.close();
+})().catch(e => { console.error('FAILED', e.message); process.exit(1); });

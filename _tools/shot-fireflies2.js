@@ -1,0 +1,23 @@
+'use strict';
+const path = require('path');
+const { chromium } = require('playwright');
+(async () => {
+  const root = path.resolve(__dirname, '..');
+  const b = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-gl=angle','--use-angle=swiftshader','--autoplay-policy=no-user-gesture-required','--hide-scrollbars'] });
+  const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
+  const errs = []; p.on('pageerror', e => errs.push(e.message));
+  await p.goto('file:///' + path.join(root, 'index.html').replace(/\\/g, '/'), { waitUntil: 'load' });
+  await p.waitForTimeout(2000);
+  const start = await p.$('#start');
+  if (start) await start.click();
+  await p.waitForTimeout(6000);
+  await p.screenshot({ path: path.join(root, 'frames', 'matrix', 'ff8.png'), timeout: 90000, animations: 'disabled' });
+  await p.evaluate(() => { const a = document.getElementById('audio'); if (a) { a.currentTime = 206; a.play().catch(function(){}); } });
+  await p.waitForTimeout(2000);
+  await p.screenshot({ path: path.join(root, 'frames', 'matrix', 'ff206.png'), timeout: 90000, animations: 'disabled' });
+  await p.evaluate(() => { const a = document.getElementById('audio'); if (a) { a.currentTime = 210.5; a.play().catch(function(){}); } });
+  await p.waitForTimeout(1500);
+  await p.screenshot({ path: path.join(root, 'frames', 'matrix', 'ff210.png'), timeout: 90000, animations: 'disabled' });
+  console.log('errors:', errs.length ? errs.slice(0,4).join(' | ') : 'none');
+  await b.close();
+})().catch(e => { console.error('FAILED', e.message); process.exit(1); });
