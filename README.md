@@ -206,13 +206,15 @@ _tools/render-mp4.js       逐帧渲染 PNG 序列（可断点续渲）
 _tools/encode-mp4.js       PNG 序列 + mp3 -> H.264/AAC mp4
 ```
 
-## 7. 版权
+## 7. 版权与仓库
 
-- 音乐、歌词版权归 **Mili** 所有，随目录分发仅为让演示能直接双击运行。
+- 音乐、歌词版权归 **Mili** 所有；本仓库**不包含**原曲 mp3、导出的 mp4 与旧版归档（见 `.gitignore`），
+  本地把音频放回根目录即可播放。
 - 动画、引擎、构建与验收工具链为本项目原创实现，非官方 PV，与 Mili 无隶属关系。
 - 方法上参考了 `Galen563/world.execute-me` 的工程骨架（单一时钟、确定性渲染、画板注册表、
   世界状态曲线、"验证画出来了而不是注册了"），**画板、世界层、绘图内核、构建与验收工具链均为重写**，
   视觉语言与叙事是另一套。
+- GitHub：https://github.com/ArtificialAngels/world-execute-me-matrix
 
 ---
 

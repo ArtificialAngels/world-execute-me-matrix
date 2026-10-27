@@ -3,6 +3,30 @@
 > 说明：下文出现的 `frames/…` 是当时的检查截图/源帧，2026-10-27 项目瘦身时已清理；
 > 随仓库保留的成品图统一在 `media/`（见 README 第 9 节）。
 
+## 2026-10-27 (h) — 项目瘦身 + 推送 GitHub（不含视频）
+
+### 检查
+- `node build.js` → BUILD OK（100 cue / 88 注册画板 / 100 cue 全覆盖）
+- `node _tools/verify.js` → ALL CHECKS PASSED（确定性 12.5/60/150s、21 帧无黑帧）
+- `node _tools/verify-browser.js` → selenium 式真浏览器：determinism+shuffle ok、无空镜、
+  无画板异常、无 console error、音频 211.91s
+- 成片 `world.execute(me)-matrix-1080p24.mp4` ffprobe：1920×1080 / 24fps / AAC 48k / 211.912875s
+
+### 瘦身（本地）
+- 删除 `frames/`（约 5 GB：浏览调试图、5086 帧 PNG 序列、各次对比截图）
+- 删除 `stills/`（旧影戏版静帧）、`archive/*.zip`（26 MB 重复档）、根目录旧 MV mp4（26 MB，archive 里已有）
+- 保留本地：成片 mp4、原曲 mp3、`archive/2026-10-26-silhouette-v1/`、旧原型目录（均不推送）
+- 新增 `media/`（6 张成品图，约 4.6 MB）供 README 展示
+
+### 推送（不含视频）
+- 新增 `.gitignore`：排除 `*.mp4 / *.mp3 / *.zip / frames/ / stills/ / archive/`、旧原型目录、
+  旧文档与旧启动脚本、`assets/char-anime.*`、工具临时 json
+- `git init -b main` → 首次提交 136 files / 6.84 MB（代码、构建与验收工具、文档、media）
+- GitHub 仓库（public）：https://github.com/ArtificialAngels/world-execute-me-matrix
+- 远端校验：136 blobs / 6.84 MB，**0 个 mp4/mp3/zip**，默认分支 `main`
+
+---
+
 ## 2026-10-27 (g) — 导出 1080p MP4
 
 交付：`world.execute(me)-matrix-1080p24.mp4`（1920×1080 / 24fps / H.264 High / AAC 192k）。
